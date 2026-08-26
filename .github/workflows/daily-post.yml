@@ -1,0 +1,72 @@
+name: Daily Instagram Card News
+
+on:
+  schedule:
+    # 매일 12:00 UTC = 21:00 KST
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true면 실제 IG 게시 없이 URL/캡션만 출력"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-instagram-post
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Generate content
+        id: gen
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          path=$(python scripts/generate_content.py)
+          echo "content_path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Render cards
+        id: render
+        run: |
+          path=$(python scripts/render_cards.py "${{ steps.gen.outputs.content_path }}")
+          echo "manifest_path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push generated images (publish to GitHub Pages)
+        run: |
+          git config user.name "cardnews-bot"
+          git config user.email "cardnews-bot@users.noreply.github.com"
+          git add docs/ content/generated/ content/history.json
+          git commit -m "chore: new card news post $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "no changes"
+          git push
+
+      - name: Wait for GitHub Pages propagation
+        run: sleep 60
+
+      - name: Publish to Instagram
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python scripts/publish_instagram.py "${{ steps.render.outputs.manifest_path }}" --dry-run
+          else
+            python scripts/publish_instagram.py "${{ steps.render.outputs.manifest_path }}"
+          fi

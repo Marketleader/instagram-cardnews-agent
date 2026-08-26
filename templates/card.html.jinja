@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {
+    font-family: 'Pretendard';
+    src: local('Pretendard');
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: {{ width }}px;
+    height: {{ height }}px;
+    overflow: hidden;
+    font-family: {{ brand.font_family }};
+    background: {{ brand.bg_color }};
+    color: {{ brand.text_color }};
+  }
+  .card {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: {% if kind == 'content' %}flex-start{% else %}center{% endif %};
+    padding: 90px 84px;
+    position: relative;
+  }
+  .kicker {
+    font-size: 30px;
+    font-weight: 700;
+    color: {{ brand.accent_color }};
+    letter-spacing: 1px;
+    margin-bottom: 28px;
+  }
+  .cover .title {
+    font-size: 76px;
+    font-weight: 800;
+    line-height: 1.28;
+    letter-spacing: -1px;
+  }
+  .cover .subtitle {
+    margin-top: 36px;
+    font-size: 34px;
+    line-height: 1.5;
+    color: {{ brand.text_color }};
+    opacity: 0.85;
+  }
+  .content .num {
+    font-size: 44px;
+    font-weight: 800;
+    color: {{ brand.accent_color }};
+    margin-bottom: 20px;
+  }
+  .content .title {
+    font-size: 54px;
+    font-weight: 800;
+    line-height: 1.32;
+    margin-bottom: 44px;
+  }
+  .content .body {
+    font-size: 36px;
+    line-height: 1.62;
+    color: {{ brand.text_color }};
+    opacity: 0.92;
+    white-space: pre-line;
+  }
+  .outro .title {
+    font-size: 60px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+  .outro .note {
+    margin-top: 40px;
+    font-size: 30px;
+    line-height: 1.6;
+    opacity: 0.8;
+  }
+  .outro .cta {
+    margin-top: 56px;
+    display: inline-block;
+    background: {{ brand.accent_color }};
+    color: {{ brand.bg_color }};
+    font-weight: 800;
+    font-size: 32px;
+    padding: 22px 40px;
+    border-radius: 100px;
+    width: fit-content;
+  }
+  .accent-bar {
+    position: absolute;
+    left: 84px;
+    top: 84px;
+    width: 64px;
+    height: 10px;
+    background: {{ brand.accent_color }};
+    border-radius: 6px;
+  }
+  .pager {
+    position: absolute;
+    bottom: 56px;
+    right: 84px;
+    font-size: 26px;
+    font-weight: 700;
+    opacity: 0.55;
+  }
+  .brand-tag {
+    position: absolute;
+    bottom: 56px;
+    left: 84px;
+    font-size: 26px;
+    font-weight: 700;
+    color: {{ brand.primary_color }};
+  }
+</style>
+</head>
+<body>
+  <div class="card {{ kind }}">
+    <div class="accent-bar"></div>
+
+    {% if kind == 'cover' %}
+      <div class="kicker">{{ kicker }}</div>
+      <div class="title">{{ title }}</div>
+      {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+    {% elif kind == 'content' %}
+      <div class="num">{{ "%02d"|format(index) }}</div>
+      <div class="title">{{ title }}</div>
+      <div class="body">{{ body }}</div>
+    {% elif kind == 'outro' %}
+      <div class="title">{{ title }}</div>
+      <div class="note">{{ body }}</div>
+      <div class="cta">{{ cta }}</div>
+    {% endif %}
+
+    <div class="brand-tag">{{ brand_tag }}</div>
+    <div class="pager">{{ index_display }} / {{ total }}</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,41 @@
+topic_theme: "몰라서 못 받는 대한민국 정부지원금·혜택 정보"
+audience: "2030 사회초년생, 자영업자, 신혼부부, 프리랜서, 육아/청년 가구"
+
+# 카드뉴스 안에서 다룰 소재 카테고리 풀 (generate_content.py가 이 중 history.json에
+# 없는 항목을 우선적으로 골라 세부 주제를 좁혀서 생성합니다)
+category_pool:
+  - "청년 자산형성 (청년도약계좌, 청년내일저축계좌 등 유형의 정책성 금융상품)"
+  - "청년 주거 지원 (전월세 보증금 대출, 월세 지원)"
+  - "소상공인/자영업자 지원금 및 저리 대출"
+  - "프리랜서/1인 사업자 세제 혜택"
+  - "신혼부부/출산 지원금"
+  - "구직/취업 지원금 (국민취업지원제도 등 유형)"
+  - "문화/여가 바우처성 지원"
+  - "에너지/생활비 절감 지원"
+  - "교육/직업훈련비 지원"
+  - "농어촌/지역 정착 지원"
+
+brand:
+  primary_color: "#1D4ED8"
+  accent_color: "#FACC15"
+  bg_color: "#0F172A"
+  text_color: "#F8FAFC"
+  font_family: "'Pretendard', 'Apple SD Gothic Neo', sans-serif"
+
+slides:
+  min: 6
+  max: 9
+
+image:
+  width: 1080
+  height: 1350
+
+posting:
+  timezone: "Asia/Seoul"
+
+model: "claude-sonnet-5"
+
+github_pages:
+  # 예: https://<github-username>.github.io/<repo-name>
+  # 실제 값은 리포지토리 생성 후 채워주세요.
+  base_url: "https://YOUR_GITHUB_USERNAME.github.io/instagram-cardnews-agent"
