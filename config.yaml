@@ -36,6 +36,4 @@ posting:
 model: "claude-sonnet-5"
 
 github_pages:
-  # 예: https://<github-username>.github.io/<repo-name>
-  # 실제 값은 리포지토리 생성 후 채워주세요.
-  base_url: "https://YOUR_GITHUB_USERNAME.github.io/instagram-cardnews-agent"
+  base_url: "https://marketleader.github.io/instagram-cardnews-agent"
