@@ -98,7 +98,7 @@ curl "https://graph.facebook.com/v21.0/{page-id}?fields=instagram_business_accou
    - 몇 분 후 `https://<your-username>.github.io/<repo-name>/` 가 열리는지 확인하세요.
 3. `config.yaml`의 `github_pages.base_url`을 위에서 확인한 실제 URL로 수정 후 커밋/푸시.
 4. **Secrets 등록**: 저장소 Settings → Secrets and variables → Actions → New repository secret
-   - `ANTHROPIC_API_KEY`
+   - `CARDNEWSAGENT` (Anthropic API 키 — 워크플로에서 `ANTHROPIC_API_KEY` 환경변수로 매핑되어 사용됩니다)
    - `IG_USER_ID`
    - `IG_ACCESS_TOKEN`
 

@@ -38,7 +38,7 @@ jobs:
       - name: Generate content
         id: gen
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.CARDNEWSAGENT }}
         run: |
           path=$(python scripts/generate_content.py)
           echo "content_path=$path" >> "$GITHUB_OUTPUT"
