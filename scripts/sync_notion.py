@@ -1,21 +1,31 @@
 """
-카드뉴스 초안/발행 상태를 Notion 데이터베이스에 하루 단위 페이지로 기록한다.
+카드뉴스 초안/발행/성과를 Notion 데이터베이스에 하루 단위 페이지로 기록한다.
 
 NOTION_TOKEN 또는 config.yaml의 notion.database_id가 설정되어 있지 않으면
 (아직 Notion 연동 전이면) 아무 것도 하지 않고 조용히 종료한다 — 이 스크립트가
 실패해도 카드뉴스 생성/발행 파이프라인 자체는 계속 동작해야 한다.
 
-필요한 Notion 데이터베이스 속성(이름 그대로 정확히 일치해야 함):
-  - 제목   (제목/Title 속성)
-  - 날짜   (날짜/Date 속성)
-  - 카테고리 (선택/Select 속성)
-  - 상태   (선택/Select 속성, 옵션: "발행 대기중", "발행 완료")
-  - post_id (텍스트/Text 속성)
+필요한 Notion 데이터베이스 속성(이름 그대로 정확히 일치해야 함).
+기본 5개는 수동으로, 나머지는 setup_notion_db.py가 자동으로 추가해준다:
+  - 제목       (Title)
+  - 날짜       (Date)
+  - 카테고리    (Select)
+  - 상태       (Select, 옵션: "발행 대기중", "발행 완료")
+  - post_id    (Text)
+  - 소재       (Text)              [자동 추가]
+  - 슬라이드수  (Number)            [자동 추가]
+  - 해시태그    (Multi-select)      [자동 추가]
+  - GitHub Pages 링크 (URL)        [자동 추가]
+  - 발행일시    (Date)              [자동 추가]
+  - media_id   (Text)              [자동 추가]
+  - 좋아요/댓글/저장/공유/도달/참여점수 (Number)  [자동 추가]
 
 사용법:
   python sync_notion.py create <content_json_path> <manifest_json_path>
-  python sync_notion.py update-status <post_id> <status>
+  python sync_notion.py update-publish <post_id> <media_id>
+  python sync_notion.py sync-performance-all
 """
+import datetime
 import json
 import os
 import sys
@@ -26,6 +36,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config.yaml"
+HISTORY_PATH = ROOT / "content" / "history.json"
 NOTION_VERSION = "2022-06-28"
 NOTION_BASE = "https://api.notion.com/v1"
 
@@ -70,14 +81,32 @@ def image_blocks(base_url: str, folder: str, filenames: list[str]) -> list[dict]
     ]
 
 
+def engagement_score(performance: dict) -> float:
+    return (
+        performance.get("saved", 0) * 3
+        + performance.get("shares", 0) * 3
+        + performance.get("comments", 0) * 2
+        + performance.get("likes", 0) * 1
+    )
+
+
 def create_page(token: str, database_id: str, content: dict, manifest: dict, base_url: str) -> str:
+    hashtags = [{"name": h.lstrip("#")[:100]} for h in content.get("hashtags", [])][:20]
+    cover_url = f"{base_url}/posts/{manifest['folder']}/{manifest['images'][0]}" if manifest.get("images") else None
+
     properties = {
         "제목": {"title": [{"text": {"content": content["cover"]["title"].replace("\n", " ")[:200]}}]},
         "날짜": {"date": {"start": content["created_at"][:10]}},
         "카테고리": {"select": {"name": content.get("category") or "미분류"}},
         "상태": {"select": {"name": "발행 대기중"}},
         "post_id": {"rich_text": [{"text": {"content": content["post_id"]}}]},
+        "소재": {"rich_text": [{"text": {"content": content["subtopic"][:2000]}}]},
+        "슬라이드수": {"number": len(manifest.get("images", []))},
+        "해시태그": {"multi_select": hashtags},
     }
+    if cover_url:
+        properties["GitHub Pages 링크"] = {"url": cover_url}
+
     children = [
         text_block("heading_2", "소재"),
         text_block("paragraph", content["subtopic"]),
@@ -103,18 +132,54 @@ def find_page_by_post_id(token: str, database_id: str, post_id: str) -> str | No
     return results[0]["id"] if results else None
 
 
-def update_status(token: str, database_id: str, post_id: str, status: str) -> None:
+def update_publish(token: str, database_id: str, post_id: str, media_id: str, published_at: str) -> None:
     page_id = find_page_by_post_id(token, database_id, post_id)
     if not page_id:
         print(f"경고: Notion에서 post_id={post_id} 페이지를 찾지 못함", file=sys.stderr)
         return
-    notion_request("PATCH", f"pages/{page_id}", token, {"properties": {"상태": {"select": {"name": status}}}})
+    properties = {
+        "상태": {"select": {"name": "발행 완료"}},
+        "발행일시": {"date": {"start": published_at}},
+    }
+    if media_id:
+        properties["media_id"] = {"rich_text": [{"text": {"content": media_id}}]}
+    notion_request("PATCH", f"pages/{page_id}", token, {"properties": properties})
+
+
+def update_performance(token: str, database_id: str, post_id: str, performance: dict) -> None:
+    page_id = find_page_by_post_id(token, database_id, post_id)
+    if not page_id:
+        print(f"경고: Notion에서 post_id={post_id} 페이지를 찾지 못함", file=sys.stderr)
+        return
+    properties = {
+        "좋아요": {"number": performance.get("likes", 0)},
+        "댓글": {"number": performance.get("comments", 0)},
+        "저장": {"number": performance.get("saved", 0)},
+        "공유": {"number": performance.get("shares", 0)},
+        "도달": {"number": performance.get("reach", 0)},
+        "참여점수": {"number": engagement_score(performance)},
+    }
+    notion_request("PATCH", f"pages/{page_id}", token, {"properties": properties})
+
+
+def sync_performance_all(token: str, database_id: str) -> None:
+    with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+        history = json.load(f)
+    updated = 0
+    for p in history["posts"]:
+        performance = p.get("performance")
+        if not performance:
+            continue
+        update_performance(token, database_id, p["post_id"], performance)
+        updated += 1
+    print(f"Notion 성과 지표 동기화: {updated}건")
 
 
 def main():
     if len(sys.argv) < 2:
         print("사용법: python sync_notion.py create <content_json> <manifest_json>", file=sys.stderr)
-        print("       python sync_notion.py update-status <post_id> <status>", file=sys.stderr)
+        print("       python sync_notion.py update-publish <post_id> <media_id>", file=sys.stderr)
+        print("       python sync_notion.py sync-performance-all", file=sys.stderr)
         sys.exit(1)
 
     config = load_config()
@@ -136,10 +201,13 @@ def main():
         base_url = config["github_pages"]["base_url"].rstrip("/")
         page_id = create_page(token, database_id, content, manifest, base_url)
         print(page_id)
-    elif action == "update-status":
+    elif action == "update-publish":
         post_id = sys.argv[2]
-        status = sys.argv[3]
-        update_status(token, database_id, post_id, status)
+        media_id = sys.argv[3] if len(sys.argv) > 3 else ""
+        published_at = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+        update_publish(token, database_id, post_id, media_id, published_at)
+    elif action == "sync-performance-all":
+        sync_performance_all(token, database_id)
     else:
         print(f"알 수 없는 action: {action}", file=sys.stderr)
         sys.exit(1)

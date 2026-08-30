@@ -42,3 +42,8 @@ jobs:
           git add content/history.json
           git commit -m "chore: update Instagram insights $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "no changes"
           git push
+
+      - name: Sync performance to Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.CARDNEWSAGENTNOTION }}
+        run: python scripts/sync_notion.py sync-performance-all

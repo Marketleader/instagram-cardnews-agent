@@ -114,7 +114,7 @@ curl "https://graph.facebook.com/v21.0/{page-id}?fields=instagram_business_accou
    - `GEMINI_API_KEY` (Google Gemini API 키, 무료 티어 — aistudio.google.com/apikey 에서 발급)
    - `IG_USER_ID`
    - `IG_ACCESS_TOKEN` (성과 지표 조회까지 하려면 이 토큰에 `instagram_manage_insights` 권한이 포함되어 있어야 합니다 — 2-4 참고)
-   - `NOTION_TOKEN` (선택 — Notion 연동을 쓸 경우만, 6번 섹션 참고)
+   - `CARDNEWSAGENTNOTION` (선택 — Notion 연동을 쓸 경우만, 6번 섹션 참고)
 
 ---
 
@@ -158,8 +158,8 @@ python scripts\main.py --dry-run
 생성되는 카드뉴스를 매일 Notion 데이터베이스에도 하루 단위 페이지로 자동 기록합니다 (초안 생성 시 페이지 생성, 발행 완료 시 상태 갱신). PC/앱 어디서든 캘린더·갤러리 뷰로 콘텐츠 이력을 한눈에 보고 싶을 때 유용합니다. 설정하지 않아도 나머지 파이프라인은 정상 동작합니다 (건너뜁니다).
 
 1. **통합(integration) 만들기**: https://www.notion.so/my-integrations → "New integration" → 이름 입력(예: "카드뉴스 봇") → 연결할 워크스페이스 선택 → 생성.
-2. 생성된 통합의 **"Internal Integration Secret"**을 복사합니다. 이 값을 저장소 Secrets에 `NOTION_TOKEN`으로 등록하세요 (지난번 API 키들과 동일하게, GitHub 웹사이트에서 직접 등록 — 절대 대화창에 붙여넣지 마세요).
-3. **데이터베이스 만들기**: Notion에서 새 페이지 → "Database - Full page" 생성 후, 아래 속성(property)을 정확히 이 이름/타입으로 추가하세요.
+2. 생성된 통합의 **"Internal Integration Secret"**을 복사합니다. 이 값을 저장소 Secrets에 **`CARDNEWSAGENTNOTION`**이라는 이름으로 등록하세요 (지난번 API 키들과 동일하게, GitHub 웹사이트에서 직접 등록 — 절대 대화창에 붙여넣지 마세요).
+3. **데이터베이스 만들기**: Notion에서 새 페이지 → "Database - Full page" 생성 후, 아래 5개 속성(property)만 정확히 이 이름/타입으로 만드세요. (성과 지표·해시태그 등 나머지 속성은 5번의 자동화 스크립트가 알아서 추가해줍니다.)
    | 속성 이름 | 타입 |
    |---|---|
    | 제목 | Title (기본 제공되는 제목 속성의 이름을 "제목"으로 변경) |
@@ -168,9 +168,11 @@ python scripts\main.py --dry-run
    | 상태 | Select (옵션: `발행 대기중`, `발행 완료`) |
    | post_id | Text |
 4. 데이터베이스 우측 상단 `⋯` 메뉴 → **"연결 추가(Add connections)"** → 방금 만든 통합을 선택해 이 데이터베이스에 접근 권한을 부여합니다. (이 단계를 빠뜨리면 API가 403 오류를 반환합니다.)
-5. 데이터베이스 페이지의 URL에서 32자리 ID를 복사합니다 (`https://notion.so/워크스페이스/<이 부분>?v=...`). 이 값은 비밀값이 아니므로 `config.yaml`의 `notion.database_id`에 직접 붙여넣고 커밋하면 됩니다.
+5. **자동 설정 실행**: Actions 탭 → "Setup Notion Database" → "Run workflow". `scripts/setup_notion_db.py`가 통합에 연결된 데이터베이스를 자동으로 찾아서 (a) `config.yaml`의 `notion.database_id`를 채워 커밋하고, (b) DB를 실제로 활용하기 좋도록 소재/슬라이드수/해시태그/GitHub Pages 링크/발행일시/media_id/좋아요/댓글/저장/공유/도달/참여점수 속성을 자동으로 추가합니다. database_id를 직접 찾아 복사할 필요가 없습니다. 몇 번을 다시 실행해도 안전합니다 (이미 있는 속성은 건드리지 않음).
 
-이후 초안이 생성될 때마다 Notion에 새 페이지가 만들어지고, 슬라이드 이미지·소재·캡션·해시태그가 함께 기록됩니다. 발행이 완료되면 해당 페이지의 "상태"가 자동으로 "발행 완료"로 바뀝니다.
+이후 초안이 생성될 때마다 Notion에 새 페이지가 만들어지고, 슬라이드 이미지·소재·해시태그·GitHub Pages 링크가 함께 기록됩니다. 발행이 완료되면 "상태"가 "발행 완료"로 바뀌고 발행일시·media_id가 채워지며, 매일 성과 지표가 수집될 때마다 좋아요/댓글/저장/공유/도달/참여점수도 함께 갱신됩니다 — 데이터베이스 뷰에서 참여점수 기준으로 정렬하거나 카테고리별로 필터링해 어떤 콘텐츠가 잘 되는지 바로 확인할 수 있습니다.
+
+> **무료 플랜 한계?** 개인(1인) Notion 워크스페이스는 2022년부터 페이지·블록 수 제한이 없습니다 (2인 이상 팀 워크스페이스에만 1,000블록 제한 적용). 매일 콘텐츠가 쌓여도 문제없습니다.
 
 ---
 
@@ -243,13 +245,15 @@ instagram-cardnews-agent/
 │   ├── publish_instagram.py      # IG Graph API 발행
 │   ├── fetch_insights.py         # 발행된 게시물의 성과 지표(좋아요/저장/공유 등) 수집
 │   ├── learn_insights.py         # 성과 데이터 분석 → content/insights.json 갱신
-│   ├── sync_notion.py            # Notion 데이터베이스에 초안/발행 상태 동기화 (선택)
+│   ├── sync_notion.py            # Notion 데이터베이스에 초안/발행/성과 동기화 (선택)
+│   ├── setup_notion_db.py        # Notion DB 자동 탐색 + 스키마 확장 (최초 1회 실행용)
 │   └── main.py                   # 로컬 테스트용 오케스트레이터 (생성→검증→렌더링→발행 전체 실행)
 ├── docs/                          # GitHub Pages 루트 (이미지 공개 호스팅)
 │   └── posts/<post_id>_<slug>/   # 슬라이드 PNG + manifest.json
 └── .github/workflows/
     ├── generate-draft.yml         # 매일 자동: 초안 생성 + 검증 + 렌더링 + Notion 동기화 (발행 안 함)
     ├── publish.yml                # 수동 트리거 전용: 재렌더링 + 실제 IG 발행 + Notion 상태 갱신
-    ├── fetch-insights.yml         # 매일 자동: 발행된 게시물 성과 지표 수집
-    └── learn-insights.yml         # 매주 자동: 성과 데이터 분석 → 인사이트 갱신
+    ├── fetch-insights.yml         # 매일 자동: 발행된 게시물 성과 지표 수집 + Notion 동기화
+    ├── learn-insights.yml         # 매주 자동: 성과 데이터 분석 → 인사이트 갱신
+    └── setup-notion.yml           # 수동 트리거 전용(최초 1회): Notion DB 자동 탐색 + 스키마 확장
 ```

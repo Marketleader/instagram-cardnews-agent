@@ -61,6 +61,6 @@ jobs:
 
       - name: Sync draft to Notion
         env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_TOKEN: ${{ secrets.CARDNEWSAGENTNOTION }}
         run: |
           python scripts/sync_notion.py create "${{ steps.gen.outputs.content_path }}" "${{ steps.render.outputs.manifest_path }}"
