@@ -35,6 +35,9 @@ def main():
     content_path = run([sys.executable, "scripts/generate_content.py"])
     print(f"콘텐츠 생성 완료: {content_path}")
 
+    run([sys.executable, "scripts/review_content.py", content_path])
+    print("검증 완료: 전문가/크리에이티브 디렉터/투자자 관점 교차 검토 및 개선 반영")
+
     manifest_path = run([sys.executable, "scripts/render_cards.py", content_path])
     print(f"이미지 렌더링 완료: {manifest_path}")
 

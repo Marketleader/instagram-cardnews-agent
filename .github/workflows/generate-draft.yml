@@ -39,6 +39,12 @@ jobs:
           path=$(python scripts/generate_content.py)
           echo "content_path=$path" >> "$GITHUB_OUTPUT"
 
+      - name: Critical review (expert / creative director / investor)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python scripts/review_content.py "${{ steps.gen.outputs.content_path }}"
+
       - name: Render cards
         run: |
           python scripts/render_cards.py "${{ steps.gen.outputs.content_path }}"

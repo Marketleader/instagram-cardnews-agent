@@ -3,10 +3,11 @@
 **주제**: 몰라서 못 받는 대한민국 정부지원금·혜택 정보 (`config.yaml`에서 변경 가능)
 
 매일 자동으로
-1. Claude가 아직 다루지 않은 세부 소재를 골라 카드뉴스 텍스트를 생성하고
-2. HTML 템플릿을 카드 이미지(PNG)로 렌더링하고
-3. GitHub Pages에 이미지를 배포해 공개 URL을 만들고
-4. Instagram Graph API로 캐러셀 게시물을 자동 발행합니다.
+1. Gemini(무료 티어)가 아직 다루지 않은 세부 소재를 골라 카드뉴스 텍스트 초안을 생성하고
+2. 전문가·크리에이티브 디렉터·투자자 세 관점에서 초안을 비판적으로 검증·개선하고
+3. HTML 템플릿을 카드 이미지(PNG)로 렌더링해 초안 상태로 커밋합니다.
+
+이후 **사람이 초안을 검토·수정하고 나서 수동으로 발행 워크플로를 실행해야** 실제로 Instagram에 게시됩니다 (완전 자동 발행이 아닙니다 — 아래 5번 참고).
 
 GitHub Actions에서 스케줄 실행되므로 개인 PC를 켜둘 필요가 없습니다.
 
@@ -15,11 +16,19 @@ GitHub Actions에서 스케줄 실행되므로 개인 PC를 켜둘 필요가 없
 ## 1. 아키텍처
 
 ```
-GitHub Actions (매일 지정 시각)
-  ├─ scripts/generate_content.py  → Claude API로 카드뉴스 텍스트(JSON) 생성
+[매일 자동 — Generate Card News Draft 워크플로]
+  ├─ scripts/generate_content.py  → Gemini API로 카드뉴스 텍스트(JSON) 초안 생성
+  ├─ scripts/review_content.py    → 전문가/크리에이티브 디렉터/투자자 관점으로 비판적 검증 후 개선판으로 교체
   ├─ scripts/render_cards.py      → Playwright로 HTML→PNG 카드 이미지 생성 (docs/posts/...)
-  ├─ git commit & push            → GitHub Pages가 이미지를 공개 URL로 서빙
-  └─ scripts/publish_instagram.py → Instagram Graph API로 캐러셀 게시
+  └─ git commit & push            → GitHub Pages가 이미지를 공개 URL로 서빙 (아직 미발행 상태)
+
+[사람이 검토/수정 — GitHub 웹/앱에서 이미지·문구 확인, 필요시 JSON 직접 편집]
+
+[수동 트리거 — Publish Card News to Instagram 워크플로]
+  ├─ scripts/resolve_draft.py     → 발행할 초안 결정
+  ├─ scripts/render_cards.py      → 수정사항 반영해 재렌더링
+  ├─ scripts/publish_instagram.py → Instagram Graph API로 캐러셀 게시
+  └─ scripts/mark_published.py    → history.json에 발행 완료 표시
 ```
 
 콘텐츠 이력은 `content/history.json`에 누적되어, 이후 생성 시 같은 소재를 반복하지 않도록 모델에게 전달됩니다.
@@ -125,7 +134,8 @@ python scripts\main.py --dry-run
 
 파이프라인은 두 개의 워크플로로 나뉘어 있습니다. **초안 생성은 매일 자동으로 실행되지만, 실제 인스타그램 발행은 항상 사람이 수동으로 트리거해야만 일어납니다.**
 
-1. **`Generate Card News Draft`** — 매일 정해진 시각(기본 21:00 KST)에 자동 실행되어 콘텐츠 JSON을 생성하고, 카드 이미지를 렌더링해 `docs/posts/<post_id>_<slug>/`에 커밋·푸시합니다. Instagram에는 아직 게시되지 않습니다.
+1. **`Generate Card News Draft`** — 매일 정해진 시각(기본 21:00 KST)에 자동 실행되어 콘텐츠 JSON을 생성하고, 전문가·크리에이티브 디렉터·투자자 세 관점의 비판적 검증을 거쳐 개선판으로 교체한 뒤, 카드 이미지를 렌더링해 `docs/posts/<post_id>_<slug>/`에 커밋·푸시합니다. Instagram에는 아직 게시되지 않습니다.
+   - 무엇이 지적되고 어떻게 고쳐졌는지는 `content/generated/<post_id>_<slug>.review.json`에서 확인할 수 있습니다.
    - 수동으로 즉시 실행하려면: Actions 탭 → "Generate Card News Draft" → "Run workflow"
 2. **초안 검토/수정** — PC 없이도 휴대폰 GitHub 앱(또는 웹)에서 확인 가능합니다.
    - 이미지 확인: 저장소의 `docs/posts/<post_id>_<slug>/` 폴더를 열면 슬라이드 PNG가 바로 미리보기됩니다. (또는 GitHub Pages URL로 직접 접속)
@@ -168,15 +178,17 @@ instagram-cardnews-agent/
 ├── content/
 │   ├── history.json             # 이미 다룬 소재 이력 + 발행 여부(published) 추적
 │   └── generated/                # 생성된 카드뉴스 텍스트(JSON) 아카이브 — 발행 전 여기서 직접 수정 가능
+│       └── <id>.review.json      # 전문가/크리에이티브 디렉터/투자자 검토 노트 (review_content.py 생성)
 ├── templates/
 │   └── card.html.jinja           # 카드 슬라이드 HTML 템플릿
 ├── scripts/
-│   ├── generate_content.py       # Gemini로 텍스트 생성 (무료 티어)
+│   ├── generate_content.py       # Gemini로 텍스트 초안 생성 (무료 티어)
+│   ├── review_content.py         # 전문가/크리에이티브 디렉터/투자자 관점 교차 검증 후 개선판으로 교체
 │   ├── render_cards.py           # HTML→PNG 렌더링
 │   ├── resolve_draft.py          # 발행할 초안(content JSON) 결정
 │   ├── mark_published.py         # history.json에 발행 완료 표시
 │   ├── publish_instagram.py      # IG Graph API 발행
-│   └── main.py                   # 로컬 테스트용 오케스트레이터 (생성→렌더링→발행 전체 실행)
+│   └── main.py                   # 로컬 테스트용 오케스트레이터 (생성→검증→렌더링→발행 전체 실행)
 ├── docs/                          # GitHub Pages 루트 (이미지 공개 호스팅)
 │   └── posts/<post_id>_<slug>/   # 슬라이드 PNG + manifest.json
 └── .github/workflows/
