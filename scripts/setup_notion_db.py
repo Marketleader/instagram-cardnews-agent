@@ -1,11 +1,13 @@
 """
-Notion 통합(integration)에 연결(공유)된 카드뉴스 데이터베이스를 자동으로 찾아
-config.yaml의 notion.database_id를 채우고, DB를 실제로 활용하기 좋도록
-(정렬/필터/성과 추적) 필요한 속성을 스키마에 추가한다.
+Notion 통합(integration)에 연결(공유)된 카드뉴스 데이터베이스를 자동으로 찾고,
+없으면 연결된 페이지 안에 필요한 속성을 모두 갖춘 데이터베이스를 새로 만든다.
+찾았거나 새로 만든 데이터베이스의 id를 config.yaml의 notion.database_id에 쓰고,
+DB를 실제로 활용하기 좋도록(정렬/필터/성과 추적) 필요한 속성이 빠짐없이 있는지
+확인해 없는 것만 추가한다.
 
-최초 1회 실행하면 되고, 다시 실행해도 안전하다 (이미 있는 속성은 건드리지 않고
-건너뛴다). 사용자가 Notion에서 데이터베이스를 만들고 통합과 "연결 추가"까지
-완료한 뒤 실행해야 한다.
+사용자가 할 일은 Notion에서 페이지나 데이터베이스를 하나 만들어 통합과
+"연결 추가"만 해두는 것뿐이다. 최초 1회 실행하면 되고, 다시 실행해도 안전하다
+(이미 있는 속성/데이터베이스는 건드리지 않는다).
 
 사용법: python setup_notion_db.py
 필요 환경변수: NOTION_TOKEN
@@ -23,9 +25,9 @@ CONFIG_PATH = ROOT / "config.yaml"
 NOTION_VERSION = "2022-06-28"
 NOTION_BASE = "https://api.notion.com/v1"
 
-# 기본 5개 속성(제목/날짜/카테고리/상태/post_id)은 README 안내에 따라 사용자가
-# 수동으로 만든다고 가정하고, 여기서는 "DB로 최적화 활용"하기 위한 나머지
-# 속성만 자동으로 추가한다.
+# DB를 실제로 활용하기 좋도록(정렬/필터/성과 추적) 갖춰야 할 속성. 기존
+# 데이터베이스에 없는 것만 골라 추가하거나(extend_schema), 새로 데이터베이스를
+# 만들 때(create_database_under_page) 처음부터 전부 포함시킨다.
 EXTENDED_PROPERTIES = {
     "소재": {"rich_text": {}},
     "슬라이드수": {"number": {"format": "number"}},
@@ -41,6 +43,14 @@ EXTENDED_PROPERTIES = {
     "참여점수": {"number": {"format": "number"}},
 }
 
+BASE_PROPERTIES = {
+    "제목": {"title": {}},
+    "날짜": {"date": {}},
+    "카테고리": {"select": {}},
+    "상태": {"select": {"options": [{"name": "발행 대기중"}, {"name": "발행 완료"}]}},
+    "post_id": {"rich_text": {}},
+}
+
 
 def headers(token: str) -> dict:
     return {
@@ -50,7 +60,32 @@ def headers(token: str) -> dict:
     }
 
 
-def find_database(token: str) -> str:
+def _title_of(r: dict) -> str:
+    props = r.get("properties", {})
+    for v in props.values():
+        if v.get("type") == "title":
+            t = v.get("title", [])
+            return t[0]["plain_text"] if t else "(제목 없음)"
+    t = r.get("title", [])
+    return t[0]["plain_text"] if t else "(제목 없음)"
+
+
+def create_database_under_page(token: str, page_id: str, page_title: str) -> str:
+    all_properties = {**BASE_PROPERTIES, **EXTENDED_PROPERTIES}
+    body = {
+        "parent": {"type": "page_id", "page_id": page_id},
+        "title": [{"type": "text", "text": {"content": "카드뉴스 콘텐츠"}}],
+        "properties": all_properties,
+    }
+    resp = requests.post(f"{NOTION_BASE}/databases", headers=headers(token), json=body, timeout=30)
+    result = resp.json()
+    if resp.status_code >= 400:
+        raise RuntimeError(f"데이터베이스 생성 실패: {json.dumps(result, ensure_ascii=False)}")
+    print(f"'{page_title}' 페이지 안에 '카드뉴스 콘텐츠' 데이터베이스를 새로 생성했습니다.")
+    return result["id"]
+
+
+def find_or_create_database(token: str) -> str:
     resp = requests.post(
         f"{NOTION_BASE}/search",
         headers=headers(token),
@@ -62,43 +97,31 @@ def find_database(token: str) -> str:
         raise RuntimeError(f"Notion 검색 실패: {json.dumps(body, ensure_ascii=False)}")
 
     results = body.get("results", [])
-    if not results:
-        # 진단: 데이터베이스가 아니라 무엇이 연결되어 있는지 확인 (필터 없이 전체 검색)
-        resp_all = requests.post(f"{NOTION_BASE}/search", headers=headers(token), json={}, timeout=30)
-        body_all = resp_all.json()
-        connected = body_all.get("results", [])
-        if not connected:
-            raise RuntimeError(
-                "이 통합(integration)에 연결된 것이 아무 것도 없습니다. "
-                "Notion에서 데이터베이스를 만든 뒤 '⋯' → '연결 추가(Add connections)'로 "
-                "이 통합을 선택했는지 확인하세요."
-            )
-        kinds = [r.get("object") for r in connected]
+    if results:
+        if len(results) > 1:
+            titles = [_title_of(r) for r in results]
+            print(f"경고: 연결된 데이터베이스가 {len(results)}개 발견됨: {titles} — 첫 번째를 사용합니다.", file=sys.stderr)
+        return results[0]["id"]
 
-        def title_of(r):
-            props = r.get("properties", {})
-            for v in props.values():
-                if v.get("type") == "title":
-                    t = v.get("title", [])
-                    return t[0]["plain_text"] if t else "(제목 없음)"
-            t = r.get("title", [])
-            return t[0]["plain_text"] if t else "(제목 없음)"
+    # 연결된 데이터베이스가 없으면, 연결된 페이지를 찾아 그 안에 데이터베이스를 새로 만든다.
+    resp_all = requests.post(f"{NOTION_BASE}/search", headers=headers(token), json={}, timeout=30)
+    body_all = resp_all.json()
+    connected = body_all.get("results", [])
+    connected_pages = [r for r in connected if r.get("object") == "page"]
 
-        details = [f"{title_of(r)} ({r.get('object')})" for r in connected]
+    if not connected_pages:
         raise RuntimeError(
-            f"통합에 연결된 항목은 있지만 데이터베이스가 아닙니다: {details}. "
-            "일반 페이지가 아니라 '데이터베이스(Database)'를 만들어서 연결했는지 확인하세요 "
-            "(페이지 안에 데이터베이스를 인라인으로 만든 경우, 그 데이터베이스 블록 자체에 "
-            "따로 '연결 추가'를 해야 할 수 있습니다). 연결된 object 타입: "
-            f"{kinds}"
+            "이 통합(integration)에 연결된 페이지나 데이터베이스가 없습니다. "
+            "Notion에서 페이지(또는 데이터베이스)를 만든 뒤 '⋯' → '연결 추가(Add connections)'로 "
+            "이 통합을 선택했는지 확인하세요."
         )
-    if len(results) > 1:
-        def title_of(r):
-            t = r.get("title", [])
-            return t[0]["plain_text"] if t else "(제목 없음)"
-        titles = [title_of(r) for r in results]
-        print(f"경고: 연결된 데이터베이스가 {len(results)}개 발견됨: {titles} — 첫 번째를 사용합니다.", file=sys.stderr)
-    return results[0]["id"]
+
+    page = connected_pages[0]
+    if len(connected_pages) > 1:
+        titles = [_title_of(r) for r in connected_pages]
+        print(f"경고: 연결된 페이지가 {len(connected_pages)}개 발견됨: {titles} — 첫 번째 안에 데이터베이스를 만듭니다.", file=sys.stderr)
+
+    return create_database_under_page(token, page["id"], _title_of(page))
 
 
 def extend_schema(token: str, database_id: str) -> None:
@@ -146,7 +169,7 @@ def update_config_database_id(database_id: str) -> None:
 
 def main():
     token = os.environ["NOTION_TOKEN"]
-    database_id = find_database(token)
+    database_id = find_or_create_database(token)
     extend_schema(token, database_id)
     update_config_database_id(database_id)
     print(database_id)
