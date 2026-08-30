@@ -1,0 +1,45 @@
+name: Learn From Content Performance
+
+on:
+  schedule:
+    # 매주 월요일 16:00 UTC = 01:00 KST(화) — 그 주까지 쌓인 성과 데이터를
+    # 종합해 다음 콘텐츠 생성에 반영할 인사이트를 갱신합니다.
+    - cron: "0 16 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cardnews-learn-insights
+  cancel-in-progress: false
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Learn insights
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/learn_insights.py
+
+      - name: Commit updated insights
+        run: |
+          git config user.name "cardnews-bot"
+          git config user.email "cardnews-bot@users.noreply.github.com"
+          if [ -f content/insights.json ]; then
+            git add content/insights.json
+          fi
+          git commit -m "chore: refresh content insights $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "no changes"
+          git push

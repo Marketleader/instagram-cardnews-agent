@@ -37,3 +37,9 @@ model: "gemini-3.6-flash"
 
 github_pages:
   base_url: "https://marketleader.github.io/instagram-cardnews-agent"
+
+# Notion 연동 (선택). 데이터베이스 ID는 비밀값이 아니므로 여기 직접 적어도 됩니다.
+# NOTION_TOKEN(계정 인증 토큰)만 GitHub Secrets에 별도로 등록하면 됩니다.
+# 설정 방법은 README.md "Notion 연동" 섹션 참고.
+notion:
+  database_id: ""

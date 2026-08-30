@@ -145,7 +145,8 @@ def main():
     print("게시 중...")
     media_id = publish(ig_user_id, access_token, container_id)
 
-    print(f"게시 완료: media_id={media_id}")
+    print(f"게시 완료: media_id={media_id}", file=sys.stderr)
+    print(media_id)
 
 
 if __name__ == "__main__":

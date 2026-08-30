@@ -28,10 +28,13 @@ GitHub Actions에서 스케줄 실행되므로 개인 PC를 켜둘 필요가 없
   ├─ scripts/resolve_draft.py     → 발행할 초안 결정
   ├─ scripts/render_cards.py      → 수정사항 반영해 재렌더링
   ├─ scripts/publish_instagram.py → Instagram Graph API로 캐러셀 게시
-  └─ scripts/mark_published.py    → history.json에 발행 완료 표시
+  └─ scripts/mark_published.py    → history.json에 발행 완료 + media_id 표시
+
+[매일/매주 자동 — 성과 분석 루프, 7번 섹션 참고]
+  fetch_insights.py(매일) → learn_insights.py(매주) → 다음 generate_content.py 호출에 반영
 ```
 
-콘텐츠 이력은 `content/history.json`에 카테고리별로 누적되어, 다음 생성 시 모델에게 "카테고리별 누적 발행 건수 + 이미 다룬 세부 소재 목록"으로 전달됩니다. 이를 바탕으로 (1) 아직 적게 다룬 카테고리를 우선 고려하고, (2) 이미 많이 다룬(포화) 카테고리를 다시 다뤄야 할 경우 기존 게시물에 없던 새로운 각도나 놓치기 쉬운 주의사항·실전 팁을 반드시 추가하도록 지시해, 콘텐츠가 쌓일수록 단순 재탕이 아닌 실질적으로 다른 가치를 갖도록 합니다.
+콘텐츠 이력은 `content/history.json`에 카테고리별로 누적되어, 다음 생성 시 모델에게 "카테고리별 누적 발행 건수 + 이미 다룬 세부 소재 목록"으로 전달됩니다. 이를 바탕으로 (1) 아직 적게 다룬 카테고리를 우선 고려하고, (2) 이미 많이 다룬(포화) 카테고리를 다시 다뤄야 할 경우 기존 게시물에 없던 새로운 각도나 놓치기 쉬운 주의사항·실전 팁을 반드시 추가하도록 지시해, 콘텐츠가 쌓일수록 단순 재탕이 아닌 실질적으로 다른 가치를 갖도록 합니다. 발행된 게시물의 실제 반응(좋아요/저장/공유)도 자동으로 수집·분석되어 다음 콘텐츠 생성에 반영됩니다 (7번 섹션 참고) — Notion 연동(선택, 6번 섹션)까지 설정하면 매일의 콘텐츠를 Notion에서도 폴더처럼 정리된 형태로 볼 수 있습니다.
 
 ---
 
@@ -57,6 +60,7 @@ Graph API로 자동 게시하려면 **Instagram 비즈니스(또는 크리에이
 3. "User or Page" → User Token 선택 후 아래 권한(permission) 체크:
    - `instagram_basic`
    - `instagram_content_publish`
+   - `instagram_manage_insights` (성과 지표 자동 수집용 — 7번 섹션 참고. 당장 안 쓸 거면 생략 가능)
    - `pages_show_list`
    - `pages_read_engagement`
    - `business_management`
@@ -109,7 +113,8 @@ curl "https://graph.facebook.com/v21.0/{page-id}?fields=instagram_business_accou
 4. **Secrets 등록**: 저장소 Settings → Secrets and variables → Actions → New repository secret
    - `GEMINI_API_KEY` (Google Gemini API 키, 무료 티어 — aistudio.google.com/apikey 에서 발급)
    - `IG_USER_ID`
-   - `IG_ACCESS_TOKEN`
+   - `IG_ACCESS_TOKEN` (성과 지표 조회까지 하려면 이 토큰에 `instagram_manage_insights` 권한이 포함되어 있어야 합니다 — 2-4 참고)
+   - `NOTION_TOKEN` (선택 — Notion 연동을 쓸 경우만, 6번 섹션 참고)
 
 ---
 
@@ -148,7 +153,54 @@ python scripts\main.py --dry-run
 
 ---
 
-## 6. 커스터마이징
+## 6. Notion 연동 (선택)
+
+생성되는 카드뉴스를 매일 Notion 데이터베이스에도 하루 단위 페이지로 자동 기록합니다 (초안 생성 시 페이지 생성, 발행 완료 시 상태 갱신). PC/앱 어디서든 캘린더·갤러리 뷰로 콘텐츠 이력을 한눈에 보고 싶을 때 유용합니다. 설정하지 않아도 나머지 파이프라인은 정상 동작합니다 (건너뜁니다).
+
+1. **통합(integration) 만들기**: https://www.notion.so/my-integrations → "New integration" → 이름 입력(예: "카드뉴스 봇") → 연결할 워크스페이스 선택 → 생성.
+2. 생성된 통합의 **"Internal Integration Secret"**을 복사합니다. 이 값을 저장소 Secrets에 `NOTION_TOKEN`으로 등록하세요 (지난번 API 키들과 동일하게, GitHub 웹사이트에서 직접 등록 — 절대 대화창에 붙여넣지 마세요).
+3. **데이터베이스 만들기**: Notion에서 새 페이지 → "Database - Full page" 생성 후, 아래 속성(property)을 정확히 이 이름/타입으로 추가하세요.
+   | 속성 이름 | 타입 |
+   |---|---|
+   | 제목 | Title (기본 제공되는 제목 속성의 이름을 "제목"으로 변경) |
+   | 날짜 | Date |
+   | 카테고리 | Select |
+   | 상태 | Select (옵션: `발행 대기중`, `발행 완료`) |
+   | post_id | Text |
+4. 데이터베이스 우측 상단 `⋯` 메뉴 → **"연결 추가(Add connections)"** → 방금 만든 통합을 선택해 이 데이터베이스에 접근 권한을 부여합니다. (이 단계를 빠뜨리면 API가 403 오류를 반환합니다.)
+5. 데이터베이스 페이지의 URL에서 32자리 ID를 복사합니다 (`https://notion.so/워크스페이스/<이 부분>?v=...`). 이 값은 비밀값이 아니므로 `config.yaml`의 `notion.database_id`에 직접 붙여넣고 커밋하면 됩니다.
+
+이후 초안이 생성될 때마다 Notion에 새 페이지가 만들어지고, 슬라이드 이미지·소재·캡션·해시태그가 함께 기록됩니다. 발행이 완료되면 해당 페이지의 "상태"가 자동으로 "발행 완료"로 바뀝니다.
+
+---
+
+## 7. 성과 분석 & 자가학습 루프
+
+발행된 게시물의 실제 반응(좋아요/댓글/저장/공유)을 자동으로 수집하고, 어떤 콘텐츠가 왜 반응이 좋았는지 분석해 다음 콘텐츠 생성에 반영합니다. 별도의 외부 에이전트 없이 이 저장소의 GitHub Actions만으로 동작합니다.
+
+```
+[Fetch Instagram Insights — 매일 자동]
+  scripts/fetch_insights.py → 발행 후 48시간 이상 지난 게시물의 성과 지표를
+  Graph API에서 조회해 history.json의 "performance" 필드에 기록
+
+[Learn From Content Performance — 매주 자동]
+  scripts/learn_insights.py → 성과 데이터가 있는 게시물들을 저장·공유 가중치
+  기반 점수로 정렬해 Gemini에게 분석시키고, "숫자가 커버 제목에 들어간 글의
+  저장률이 높았다" 같은 구체적 패턴을 content/insights.json에 기록
+
+[Generate Card News Draft — 매일 자동]
+  scripts/generate_content.py → content/insights.json이 있으면 프롬프트에
+  포함해, 다음 콘텐츠가 과거에 효과가 검증된 패턴을 반영하도록 함
+```
+
+- 최소 3건 이상 성과 데이터가 쌓이기 전까지 `learn_insights.py`는 분석을 건너뜁니다 (데이터 부족 상태에서 억지로 패턴을 만들어내지 않도록).
+- 무엇이 학습됐는지는 `content/insights.json`에서 직접 확인할 수 있습니다.
+- 성과 조회에는 `IG_ACCESS_TOKEN`에 `instagram_manage_insights` 권한이 필요합니다 (2-4 참고). 권한이 없으면 `fetch_insights.py`가 해당 게시물만 건너뛰고 경고를 남깁니다 (파이프라인 전체가 멈추지 않음).
+- 수동으로 즉시 실행하려면: Actions 탭 → "Fetch Instagram Insights" 또는 "Learn From Content Performance" → "Run workflow"
+
+---
+
+## 8. 커스터마이징
 
 - **주제/카테고리**: `config.yaml`의 `topic_theme`, `category_pool` 수정
 - **디자인**: `config.yaml`의 `brand` (색상), `templates/card.html.jinja` (레이아웃)
@@ -158,7 +210,7 @@ python scripts\main.py --dry-run
 
 ---
 
-## 7. 운영 시 주의사항
+## 9. 운영 시 주의사항
 
 - **정보 정확성**: 정부지원금 관련 콘텐츠는 구체적 금액·자격·기간을 단정적으로 제시하지 않고 "최신 공고 확인" 안내를 포함하도록 프롬프트를 설계했습니다. 그래도 정기적으로 실제 게시물을 직접 검수하는 것을 권장합니다. 잘못된 정보는 신뢰도와 법적 책임 문제로 이어질 수 있습니다.
 - **토큰 만료**: 장기 토큰(60일) 방식이면 만료 전 갱신 필요. System User 토큰 사용을 권장합니다 (2-5 참고).
@@ -168,7 +220,7 @@ python scripts\main.py --dry-run
 
 ---
 
-## 8. 파일 구조
+## 10. 파일 구조
 
 ```
 instagram-cardnews-agent/
@@ -176,7 +228,8 @@ instagram-cardnews-agent/
 ├── .env.example                 # 로컬 테스트용 환경변수 템플릿
 ├── requirements.txt
 ├── content/
-│   ├── history.json             # 이미 다룬 소재 이력 + 발행 여부(published) 추적
+│   ├── history.json             # 이미 다룬 소재 이력 + 카테고리/발행/성과(performance) 추적
+│   ├── insights.json            # learn_insights.py가 성과 데이터에서 뽑아낸 학습 인사이트
 │   └── generated/                # 생성된 카드뉴스 텍스트(JSON) 아카이브 — 발행 전 여기서 직접 수정 가능
 │       └── <id>.review.json      # 전문가/크리에이티브 디렉터/투자자 검토 노트 (review_content.py 생성)
 ├── templates/
@@ -186,12 +239,17 @@ instagram-cardnews-agent/
 │   ├── review_content.py         # 전문가/크리에이티브 디렉터/투자자 관점 교차 검증 후 개선판으로 교체
 │   ├── render_cards.py           # HTML→PNG 렌더링
 │   ├── resolve_draft.py          # 발행할 초안(content JSON) 결정
-│   ├── mark_published.py         # history.json에 발행 완료 표시
+│   ├── mark_published.py         # history.json에 발행 완료 + 발행시각/media_id 표시
 │   ├── publish_instagram.py      # IG Graph API 발행
+│   ├── fetch_insights.py         # 발행된 게시물의 성과 지표(좋아요/저장/공유 등) 수집
+│   ├── learn_insights.py         # 성과 데이터 분석 → content/insights.json 갱신
+│   ├── sync_notion.py            # Notion 데이터베이스에 초안/발행 상태 동기화 (선택)
 │   └── main.py                   # 로컬 테스트용 오케스트레이터 (생성→검증→렌더링→발행 전체 실행)
 ├── docs/                          # GitHub Pages 루트 (이미지 공개 호스팅)
 │   └── posts/<post_id>_<slug>/   # 슬라이드 PNG + manifest.json
 └── .github/workflows/
-    ├── generate-draft.yml         # 매일 자동: 초안 생성 + 렌더링 (발행 안 함)
-    └── publish.yml                # 수동 트리거 전용: 재렌더링 + 실제 IG 발행
+    ├── generate-draft.yml         # 매일 자동: 초안 생성 + 검증 + 렌더링 + Notion 동기화 (발행 안 함)
+    ├── publish.yml                # 수동 트리거 전용: 재렌더링 + 실제 IG 발행 + Notion 상태 갱신
+    ├── fetch-insights.yml         # 매일 자동: 발행된 게시물 성과 지표 수집
+    └── learn-insights.yml         # 매주 자동: 성과 데이터 분석 → 인사이트 갱신
 ```

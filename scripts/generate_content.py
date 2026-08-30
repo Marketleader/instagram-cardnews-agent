@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config.yaml"
 HISTORY_PATH = ROOT / "content" / "history.json"
 GENERATED_DIR = ROOT / "content" / "generated"
+INSIGHTS_PATH = ROOT / "content" / "insights.json"
 
 
 def load_config() -> dict:
@@ -31,6 +32,14 @@ def load_history() -> dict:
         return {"posts": []}
     with open(HISTORY_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_insights() -> list[str]:
+    """learn_insights.py가 성과 데이터에서 뽑아낸 인사이트를 불러온다 (없으면 빈 리스트)."""
+    if not INSIGHTS_PATH.exists():
+        return []
+    with open(INSIGHTS_PATH, "r", encoding="utf-8") as f:
+        return json.load(f).get("insights", [])
 
 
 def save_history(history: dict) -> None:
@@ -62,7 +71,7 @@ def category_coverage(config: dict, history: dict) -> list[dict]:
     return coverage
 
 
-def build_prompt(config: dict, history: dict) -> str:
+def build_prompt(config: dict, history: dict, insights: list[str] | None = None) -> str:
     min_slides = config["slides"]["min"]
     max_slides = config["slides"]["max"]
     coverage = category_coverage(config, history)
@@ -79,13 +88,22 @@ def build_prompt(config: dict, history: dict) -> str:
         )
     coverage_block = "\n".join(coverage_lines)
 
+    insights_block = ""
+    if insights:
+        insights_lines = "\n".join(f"- {i}" for i in insights)
+        insights_block = f"""
+아래는 과거 실제 게시물의 성과(저장/공유/댓글 등)를 분석해 뽑아낸 인사이트입니다.
+가능한 범위에서 실제로 반영하세요 (단, 위의 정보 정확성 제약보다 우선하지는 마세요):
+{insights_lines}
+"""
+
     return f"""당신은 인스타그램 카드뉴스 전문 에디터입니다.
 주제 테마: "{config['topic_theme']}"
 타깃 독자: {config['audience']}
 
 아래는 카테고리별 지금까지의 누적 발행 현황입니다 (인덱스: 카테고리명, 건수, 이미 다룬 세부 소재 목록):
 {coverage_block}
-
+{insights_block}
 작업:
 1. 카테고리를 고르세요.
    - 건수가 적은("아직 적음") 카테고리를 우선 고려하세요. 특정 카테고리에 콘텐츠가 쏠리지
@@ -149,7 +167,8 @@ def call_model(config: dict, prompt: str) -> dict:
 def main():
     config = load_config()
     history = load_history()
-    prompt = build_prompt(config, history)
+    insights = load_insights()
+    prompt = build_prompt(config, history, insights)
     data = call_model(config, prompt)
 
     slide_count = len(data["slides"])

@@ -46,8 +46,10 @@ jobs:
           python scripts/review_content.py "${{ steps.gen.outputs.content_path }}"
 
       - name: Render cards
+        id: render
         run: |
-          python scripts/render_cards.py "${{ steps.gen.outputs.content_path }}"
+          path=$(python scripts/render_cards.py "${{ steps.gen.outputs.content_path }}")
+          echo "manifest_path=$path" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push draft (images + content)
         run: |
@@ -56,3 +58,9 @@ jobs:
           git add docs/ content/generated/ content/history.json
           git commit -m "chore: new draft card news $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "no changes"
           git push
+
+      - name: Sync draft to Notion
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: |
+          python scripts/sync_notion.py create "${{ steps.gen.outputs.content_path }}" "${{ steps.render.outputs.manifest_path }}"
