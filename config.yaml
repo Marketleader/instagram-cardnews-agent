@@ -42,4 +42,4 @@ github_pages:
 # NOTION_TOKEN(계정 인증 토큰)만 GitHub Secrets에 별도로 등록하면 됩니다.
 # 설정 방법은 README.md "Notion 연동" 섹션 참고.
 notion:
-  database_id: ""
+  database_id: "3cc44ced-c89a-8178-9f51-d11166c989bb"
