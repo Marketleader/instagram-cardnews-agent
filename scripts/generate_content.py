@@ -44,27 +44,65 @@ def slugify(text: str) -> str:
     return text[:40] if text else "post"
 
 
+MAX_SUBTOPICS_PER_CATEGORY_SHOWN = 15
+SATURATED_THRESHOLD = 5
+
+
+def category_coverage(config: dict, history: dict) -> list[dict]:
+    """카테고리별 지금까지의 발행 현황(건수 + 다룬 세부 소재)을 계산한다."""
+    coverage = []
+    for idx, cat in enumerate(config["category_pool"]):
+        posts_in_cat = [p for p in history["posts"] if p.get("category_index") == idx]
+        coverage.append({
+            "index": idx,
+            "category": cat,
+            "count": len(posts_in_cat),
+            "covered_subtopics": [p["subtopic"] for p in posts_in_cat][-MAX_SUBTOPICS_PER_CATEGORY_SHOWN:],
+        })
+    return coverage
+
+
 def build_prompt(config: dict, history: dict) -> str:
-    used_subtopics = [p["subtopic"] for p in history["posts"][-30:]]
     min_slides = config["slides"]["min"]
     max_slides = config["slides"]["max"]
+    coverage = category_coverage(config, history)
+
+    coverage_lines = []
+    for c in coverage:
+        status = "포화 — 신중히 선택" if c["count"] >= SATURATED_THRESHOLD else (
+            "아직 적음 — 우선 고려" if c["count"] <= 1 else "보통"
+        )
+        subtopics = json.dumps(c["covered_subtopics"], ensure_ascii=False) if c["covered_subtopics"] else "[]"
+        coverage_lines.append(
+            f'{c["index"]}: "{c["category"]}" (누적 {c["count"]}건, {status})\n'
+            f'   이미 다룬 세부 소재: {subtopics}'
+        )
+    coverage_block = "\n".join(coverage_lines)
 
     return f"""당신은 인스타그램 카드뉴스 전문 에디터입니다.
 주제 테마: "{config['topic_theme']}"
 타깃 독자: {config['audience']}
 
-아래는 이 테마 안에서 다룰 수 있는 소재 카테고리 목록입니다:
-{json.dumps(config['category_pool'], ensure_ascii=False, indent=2)}
-
-최근에 이미 다룬 세부 소재(반드시 피할 것, 겹치지 않는 새로운 각도를 선택):
-{json.dumps(used_subtopics, ensure_ascii=False, indent=2) if used_subtopics else "(아직 없음)"}
+아래는 카테고리별 지금까지의 누적 발행 현황입니다 (인덱스: 카테고리명, 건수, 이미 다룬 세부 소재 목록):
+{coverage_block}
 
 작업:
-1. 위 카테고리 중 하나를 골라, 그 안에서 아주 구체적인 세부 소재 하나를 정하세요.
+1. 카테고리를 고르세요.
+   - 건수가 적은("아직 적음") 카테고리를 우선 고려하세요. 특정 카테고리에 콘텐츠가 쏠리지
+     않도록 다양성을 유지하는 것이 중요합니다.
+   - "포화" 카테고리는 가능하면 피하세요. 다룰 만한 새로운 세부 소재가 정말 없는 경우가
+     아니라면 다른 카테고리를 선택하세요.
+   - 부득이하게 포화된 카테고리를 다시 선택해야 한다면, 반드시 그 카테고리의 "이미 다룬
+     세부 소재" 목록을 검토하여: (a) 그 목록과 명백히 겹치지 않는 완전히 새로운 각도를
+     고르거나, (b) 기존 소재들이 놓치고 있을 법한 조건·예외 케이스·놓치기 쉬운 주의사항·
+     실전 신청 팁 등 더 깊고 구체적인 정보를 반드시 추가하여 기존 게시물 대비 실질적으로
+     더 유용해야 합니다. 표현만 바꾼 재탕(사실상 동일한 내용의 반복)은 금지합니다.
+2. 고른 카테고리 안에서 아주 구체적인 세부 소재 하나를 정하세요. 반드시 해당 카테고리의
+   "이미 다룬 세부 소재" 목록과 겹치지 않아야 합니다.
    (예: "청년 자산형성" 카테고리라면 -> "매달 일정 금액을 저축하면 정부가 추가로 얹어주는 유형의
    청년 자산형성 상품, 신청 자격과 놓치기 쉬운 조건" 처럼 좁힐 것)
-2. {min_slides}~{max_slides}장짜리 카드뉴스 슬라이드 콘텐츠를 작성하세요.
-3. 반드시 아래 JSON 형식으로만 응답하세요. 다른 설명, 마크다운 코드펜스 없이 순수 JSON만 출력합니다.
+3. {min_slides}~{max_slides}장짜리 카드뉴스 슬라이드 콘텐츠를 작성하세요.
+4. 반드시 아래 JSON 형식으로만 응답하세요. 다른 설명, 마크다운 코드펜스 없이 순수 JSON만 출력합니다.
 
 중요한 제약:
 - 이 계정은 실제 정부/지자체 지원 제도를 다룹니다. 구체적인 금액, 지원 대상 나이, 소득 기준,
@@ -78,6 +116,7 @@ def build_prompt(config: dict, history: dict) -> str:
 
 JSON 스키마:
 {{
+  "category_index": 0,
   "subtopic": "이번에 다루는 세부 소재 한 줄 요약",
   "cover": {{"kicker": "카테고리 라벨 (예: 청년 지원)", "title": "후킹되는 커버 제목 (두 줄 이내)", "subtitle": "부제 한 줄"}},
   "slides": [
@@ -87,6 +126,7 @@ JSON 스키마:
   "caption": "인스타그램 게시물 캡션 전체 텍스트 (이모지 적절히 사용, 3~6문단, 마지막에 해시태그 제외)",
   "hashtags": ["#정부지원금", "#태그2", "... 15~20개, # 포함"]
 }}
+("category_index"는 위 카테고리 목록의 인덱스 번호와 정확히 일치해야 합니다.)
 """
 
 
@@ -116,6 +156,13 @@ def main():
     if not (config["slides"]["min"] <= slide_count <= config["slides"]["max"] + 2):
         print(f"경고: 슬라이드 수({slide_count})가 예상 범위를 벗어남", file=sys.stderr)
 
+    category_index = data.get("category_index")
+    if not isinstance(category_index, int) or not (0 <= category_index < len(config["category_pool"])):
+        print(f"경고: category_index({category_index})가 유효하지 않음, 미분류로 기록", file=sys.stderr)
+        category_index = None
+    data["category_index"] = category_index
+    data["category"] = config["category_pool"][category_index] if category_index is not None else None
+
     now = datetime.now(timezone.utc)
     post_id = now.strftime("%Y%m%d-%H%M%S")
     slug = slugify(data["subtopic"])
@@ -132,6 +179,7 @@ def main():
     history["posts"].append({
         "post_id": post_id,
         "subtopic": data["subtopic"],
+        "category_index": category_index,
         "created_at": data["created_at"],
         "content_file": out_path.name,
         "published": False,
