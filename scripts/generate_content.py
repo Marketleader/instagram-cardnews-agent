@@ -93,7 +93,7 @@ JSON 스키마:
 def call_model(config: dict, prompt: str) -> dict:
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     resp = client.models.generate_content(
-        model=config.get("model", "gemini-2.5-flash"),
+        model=config.get("model", "gemini-3.6-flash"),
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
