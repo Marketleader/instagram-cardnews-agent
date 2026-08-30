@@ -33,7 +33,7 @@ image:
 posting:
   timezone: "Asia/Seoul"
 
-model: "claude-sonnet-5"
+model: "gemini-2.5-flash"
 
 github_pages:
   base_url: "https://marketleader.github.io/instagram-cardnews-agent"

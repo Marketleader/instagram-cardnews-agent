@@ -98,7 +98,7 @@ curl "https://graph.facebook.com/v21.0/{page-id}?fields=instagram_business_accou
    - 몇 분 후 `https://<your-username>.github.io/<repo-name>/` 가 열리는지 확인하세요.
 3. `config.yaml`의 `github_pages.base_url`을 위에서 확인한 실제 URL로 수정 후 커밋/푸시.
 4. **Secrets 등록**: 저장소 Settings → Secrets and variables → Actions → New repository secret
-   - `CARDNEWSAGENT` (Anthropic API 키 — 워크플로에서 `ANTHROPIC_API_KEY` 환경변수로 매핑되어 사용됩니다)
+   - `GEMINI_API_KEY` (Google Gemini API 키, 무료 티어 — aistudio.google.com/apikey 에서 발급)
    - `IG_USER_ID`
    - `IG_ACCESS_TOKEN`
 
@@ -112,7 +112,7 @@ python -m venv .venv
 pip install -r requirements.txt
 playwright install chromium
 
-copy .env.example .env        # 값 채워넣기 (ANTHROPIC_API_KEY만 있으면 dry-run 가능)
+copy .env.example .env        # 값 채워넣기 (GEMINI_API_KEY만 있으면 dry-run 가능)
 
 python scripts\main.py --dry-run
 ```
@@ -121,12 +121,20 @@ python scripts\main.py --dry-run
 
 ---
 
-## 5. 실제 게시 테스트 (GitHub Actions)
+## 5. 운영 흐름 (초안 자동 생성 → 검토/수정 → 수동 발행)
 
-1. 저장소 Actions 탭 → "Daily Instagram Card News" 워크플로 선택 → "Run workflow"
-2. 먼저 `dry_run`을 `true`로 실행 → 로그에서 이미지 URL/캡션이 잘 나오는지 확인
-3. 문제없으면 `dry_run`을 `false`로 다시 실행 → 실제로 인스타그램에 게시됩니다
-4. 이후에는 `.github/workflows/daily-post.yml`의 cron 스케줄에 따라 매일 자동 실행됩니다 (기본: 매일 21:00 KST → 필요시 cron 값 수정)
+파이프라인은 두 개의 워크플로로 나뉘어 있습니다. **초안 생성은 매일 자동으로 실행되지만, 실제 인스타그램 발행은 항상 사람이 수동으로 트리거해야만 일어납니다.**
+
+1. **`Generate Card News Draft`** — 매일 정해진 시각(기본 21:00 KST)에 자동 실행되어 콘텐츠 JSON을 생성하고, 카드 이미지를 렌더링해 `docs/posts/<post_id>_<slug>/`에 커밋·푸시합니다. Instagram에는 아직 게시되지 않습니다.
+   - 수동으로 즉시 실행하려면: Actions 탭 → "Generate Card News Draft" → "Run workflow"
+2. **초안 검토/수정** — PC 없이도 휴대폰 GitHub 앱(또는 웹)에서 확인 가능합니다.
+   - 이미지 확인: 저장소의 `docs/posts/<post_id>_<slug>/` 폴더를 열면 슬라이드 PNG가 바로 미리보기됩니다. (또는 GitHub Pages URL로 직접 접속)
+   - 문구 수정: `content/generated/<post_id>_<slug>.json` 파일을 GitHub 웹/앱에서 직접 열어 편집(✏️) 후 커밋하면 됩니다. (`slides[].title`/`body`, `cover`, `outro`, `caption`, `hashtags` 등)
+3. **`Publish Card News to Instagram`** — 검토가 끝나면 Actions 탭 → "Publish Card News to Instagram" → "Run workflow"를 **수동으로** 실행합니다.
+   - `post_id`를 비워두면 가장 최근에 생성된, 아직 발행되지 않은 초안을 자동으로 찾아 발행합니다. 특정 날짜의 초안을 지정하려면 `content/history.json`에서 `post_id` 값을 확인해 입력하세요.
+   - 이 워크플로는 발행 직전에 콘텐츠 JSON을 다시 렌더링하므로, 2번에서 문구를 수정했다면 그 내용이 이미지에 반영된 채로 게시됩니다.
+   - 먼저 `dry_run`을 `true`로 실행해 로그에서 이미지 URL/캡션이 의도대로 나오는지 확인한 뒤, `dry_run`을 `false`로 다시 실행하면 실제로 인스타그램에 게시됩니다.
+   - 발행이 끝나면 해당 초안은 `content/history.json`에 `published: true`로 표시되어, 다음번에 `post_id`를 비워두고 실행해도 중복 발행되지 않습니다.
 
 ---
 
@@ -135,7 +143,7 @@ python scripts\main.py --dry-run
 - **주제/카테고리**: `config.yaml`의 `topic_theme`, `category_pool` 수정
 - **디자인**: `config.yaml`의 `brand` (색상), `templates/card.html.jinja` (레이아웃)
 - **슬라이드 수**: `config.yaml`의 `slides.min` / `slides.max`
-- **게시 시각**: `.github/workflows/daily-post.yml`의 `cron` 값 (UTC 기준, KST = UTC+9)
+- **초안 생성 시각**: `.github/workflows/generate-draft.yml`의 `cron` 값 (UTC 기준, KST = UTC+9). 실제 발행 시각은 스케줄이 아니라 사용자가 "Publish Card News to Instagram" 워크플로를 수동 실행하는 시점입니다.
 - **다른 주제로 완전 교체**: `topic_theme`, `audience`, `category_pool`만 바꾸면 나머지 파이프라인은 그대로 재사용됩니다.
 
 ---
@@ -158,16 +166,20 @@ instagram-cardnews-agent/
 ├── .env.example                 # 로컬 테스트용 환경변수 템플릿
 ├── requirements.txt
 ├── content/
-│   ├── history.json             # 이미 다룬 소재 이력 (중복 방지)
-│   └── generated/                # 생성된 카드뉴스 텍스트(JSON) 아카이브
+│   ├── history.json             # 이미 다룬 소재 이력 + 발행 여부(published) 추적
+│   └── generated/                # 생성된 카드뉴스 텍스트(JSON) 아카이브 — 발행 전 여기서 직접 수정 가능
 ├── templates/
 │   └── card.html.jinja           # 카드 슬라이드 HTML 템플릿
 ├── scripts/
-│   ├── generate_content.py       # Claude로 텍스트 생성
+│   ├── generate_content.py       # Gemini로 텍스트 생성 (무료 티어)
 │   ├── render_cards.py           # HTML→PNG 렌더링
+│   ├── resolve_draft.py          # 발행할 초안(content JSON) 결정
+│   ├── mark_published.py         # history.json에 발행 완료 표시
 │   ├── publish_instagram.py      # IG Graph API 발행
-│   └── main.py                   # 로컬 테스트용 오케스트레이터
+│   └── main.py                   # 로컬 테스트용 오케스트레이터 (생성→렌더링→발행 전체 실행)
 ├── docs/                          # GitHub Pages 루트 (이미지 공개 호스팅)
 │   └── posts/<post_id>_<slug>/   # 슬라이드 PNG + manifest.json
-└── .github/workflows/daily-post.yml
+└── .github/workflows/
+    ├── generate-draft.yml         # 매일 자동: 초안 생성 + 렌더링 (발행 안 함)
+    └── publish.yml                # 수동 트리거 전용: 재렌더링 + 실제 IG 발행
 ```

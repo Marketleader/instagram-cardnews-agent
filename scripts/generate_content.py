@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from anthropic import Anthropic
+from google import genai
+from google.genai import types
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config.yaml"
@@ -90,14 +91,16 @@ JSON 스키마:
 
 
 def call_model(config: dict, prompt: str) -> dict:
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    resp = client.messages.create(
-        model=config.get("model", "claude-sonnet-5"),
-        max_tokens=6000,
-        messages=[{"role": "user", "content": prompt}],
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    resp = client.models.generate_content(
+        model=config.get("model", "gemini-2.5-flash"),
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            max_output_tokens=6000,
+        ),
     )
-    text = "".join(block.text for block in resp.content if block.type == "text")
-    text = text.strip()
+    text = resp.text.strip()
     text = re.sub(r"^```(json)?", "", text.strip())
     text = re.sub(r"```$", "", text.strip())
     return json.loads(text)
@@ -130,6 +133,8 @@ def main():
         "post_id": post_id,
         "subtopic": data["subtopic"],
         "created_at": data["created_at"],
+        "content_file": out_path.name,
+        "published": False,
     })
     save_history(history)
 
