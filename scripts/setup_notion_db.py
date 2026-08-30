@@ -63,9 +63,34 @@ def find_database(token: str) -> str:
 
     results = body.get("results", [])
     if not results:
+        # 진단: 데이터베이스가 아니라 무엇이 연결되어 있는지 확인 (필터 없이 전체 검색)
+        resp_all = requests.post(f"{NOTION_BASE}/search", headers=headers(token), json={}, timeout=30)
+        body_all = resp_all.json()
+        connected = body_all.get("results", [])
+        if not connected:
+            raise RuntimeError(
+                "이 통합(integration)에 연결된 것이 아무 것도 없습니다. "
+                "Notion에서 데이터베이스를 만든 뒤 '⋯' → '연결 추가(Add connections)'로 "
+                "이 통합을 선택했는지 확인하세요."
+            )
+        kinds = [r.get("object") for r in connected]
+
+        def title_of(r):
+            props = r.get("properties", {})
+            for v in props.values():
+                if v.get("type") == "title":
+                    t = v.get("title", [])
+                    return t[0]["plain_text"] if t else "(제목 없음)"
+            t = r.get("title", [])
+            return t[0]["plain_text"] if t else "(제목 없음)"
+
+        details = [f"{title_of(r)} ({r.get('object')})" for r in connected]
         raise RuntimeError(
-            "이 통합(integration)에 연결된 데이터베이스를 찾지 못했습니다. "
-            "Notion 데이터베이스에서 '⋯' → '연결 추가'로 통합을 공유했는지 확인하세요."
+            f"통합에 연결된 항목은 있지만 데이터베이스가 아닙니다: {details}. "
+            "일반 페이지가 아니라 '데이터베이스(Database)'를 만들어서 연결했는지 확인하세요 "
+            "(페이지 안에 데이터베이스를 인라인으로 만든 경우, 그 데이터베이스 블록 자체에 "
+            "따로 '연결 추가'를 해야 할 수 있습니다). 연결된 object 타입: "
+            f"{kinds}"
         )
     if len(results) > 1:
         def title_of(r):
