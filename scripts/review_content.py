@@ -88,7 +88,9 @@ def call_model(config: dict, prompt: str) -> dict:
     text = resp.text.strip()
     text = re.sub(r"^```(json)?", "", text.strip())
     text = re.sub(r"```$", "", text.strip())
-    return json.loads(text)
+    # strict=False: 모델이 문자열 안에 이스케이프 없는 개행 등 제어 문자를
+    # 그대로 넣는 경우가 있어, 엄격 모드에서는 파싱이 깨진다.
+    return json.loads(text, strict=False)
 
 
 def main():
