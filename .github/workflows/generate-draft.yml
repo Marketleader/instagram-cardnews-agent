@@ -2,9 +2,11 @@ name: Generate Card News Draft
 
 on:
   schedule:
-    # 매일 12:00 UTC = 21:00 KST — 초안만 생성합니다. 실제 발행은 별도로
+    # 이틀에 한 번, 12:00 UTC = 21:00 KST — 초안만 생성합니다. 실제 발행은 별도로
     # "Publish Card News" 워크플로를 수동 실행해야 합니다.
-    - cron: "0 12 * * *"
+    # 발행이 안정화되면 "0 12 * * *" (매일)로 바꾸세요. (*/2는 월 경계에서 이틀 연속
+    # 실행될 수 있는 cron의 알려진 한계가 있으나, 초안 생성 빈도이므로 문제 없습니다.)
+    - cron: "0 12 */2 * *"
   workflow_dispatch: {}
 
 permissions:

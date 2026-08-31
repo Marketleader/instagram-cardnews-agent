@@ -91,7 +91,7 @@ def main():
                 width=width,
                 height=height,
                 brand=brand,
-                brand_tag=data.get("cover", {}).get("kicker", "정보카드"),
+                brand_tag=brand.get("series_name", "카드뉴스"),
                 **ctx,
             )
             page.set_content(html)
