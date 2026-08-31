@@ -11,6 +11,8 @@
 
 GitHub Actions에서 스케줄 실행되므로 개인 PC를 켜둘 필요가 없습니다.
 
+발행 주기, 카테고리 체계, 1개월차 주제 리스트, 3~6개월 성장 프레임은 [`CONTENT_STRATEGY.md`](./CONTENT_STRATEGY.md) 참고.
+
 ---
 
 ## 1. 아키텍처
