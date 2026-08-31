@@ -29,7 +29,7 @@ brand:
   body_font: "'Noto Sans KR', sans-serif"
   series_name: "마음 북극성"
   # "owl" 또는 "human" — 어떤 마스코트 캐릭터를 쓸지 선택
-  character: "owl"
+  character: "human"
 
 slides:
   min: 6
