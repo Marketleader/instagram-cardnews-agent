@@ -24,8 +24,8 @@ brand:
   accent_color: "#FF6BD6"
   gold_color: "#E7B84A"
   ink_color: "#2A2140"
-  display_font: "'Gothic A1', sans-serif"
-  label_font: "'Orbitron', sans-serif"
+  display_font: "'Gothic A1', 'Noto Sans KR', sans-serif"
+  label_font: "'Chakra Petch', 'Noto Sans KR', sans-serif"
   body_font: "'Noto Sans KR', sans-serif"
   series_name: "마음 북극성"
   # "owl" 또는 "human" — 어떤 마스코트 캐릭터를 쓸지 선택
