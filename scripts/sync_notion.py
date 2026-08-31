@@ -24,6 +24,7 @@ NOTION_TOKEN 또는 config.yaml의 notion.database_id가 설정되어 있지 않
   python sync_notion.py create <content_json_path> <manifest_json_path>
   python sync_notion.py update-publish <post_id> <media_id>
   python sync_notion.py sync-performance-all
+  python sync_notion.py archive-stale
 """
 import datetime
 import json
@@ -175,11 +176,33 @@ def sync_performance_all(token: str, database_id: str) -> None:
     print(f"Notion 성과 지표 동기화: {updated}건")
 
 
+def archive_stale_pages(token: str, database_id: str) -> None:
+    """content/history.json에 더 이상 없는 post_id의 Notion 페이지를 보관 처리(archive)한다.
+    주제 전환 등으로 history.json에서 옛 초안을 정리했을 때, Notion에 남은 옛 페이지를
+    함께 정리하기 위한 용도."""
+    with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+        history = json.load(f)
+    valid_post_ids = {p["post_id"] for p in history["posts"]}
+
+    result = notion_request("POST", f"databases/{database_id}/query", token, {})
+    archived = 0
+    for page in result.get("results", []):
+        props = page.get("properties", {})
+        rich_text = props.get("post_id", {}).get("rich_text", [])
+        page_post_id = rich_text[0]["plain_text"] if rich_text else None
+        if page_post_id and page_post_id not in valid_post_ids:
+            notion_request("PATCH", f"pages/{page['id']}", token, {"archived": True})
+            archived += 1
+            print(f"보관 처리: {page_post_id}")
+    print(f"Notion 옛 페이지 보관 처리: {archived}건")
+
+
 def main():
     if len(sys.argv) < 2:
         print("사용법: python sync_notion.py create <content_json> <manifest_json>", file=sys.stderr)
         print("       python sync_notion.py update-publish <post_id> <media_id>", file=sys.stderr)
         print("       python sync_notion.py sync-performance-all", file=sys.stderr)
+        print("       python sync_notion.py archive-stale", file=sys.stderr)
         sys.exit(1)
 
     config = load_config()
@@ -208,6 +231,8 @@ def main():
         update_publish(token, database_id, post_id, media_id, published_at)
     elif action == "sync-performance-all":
         sync_performance_all(token, database_id)
+    elif action == "archive-stale":
+        archive_stale_pages(token, database_id)
     else:
         print(f"알 수 없는 action: {action}", file=sys.stderr)
         sys.exit(1)

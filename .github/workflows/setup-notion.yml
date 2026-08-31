@@ -1,4 +1,4 @@
-name: Setup Notion Database
+name: Setup & Clean Notion Database
 
 on:
   workflow_dispatch: {}
@@ -25,6 +25,11 @@ jobs:
         env:
           NOTION_TOKEN: ${{ secrets.CARDNEWSAGENTNOTION }}
         run: python scripts/setup_notion_db.py
+
+      - name: Archive Notion pages no longer in history.json
+        env:
+          NOTION_TOKEN: ${{ secrets.CARDNEWSAGENTNOTION }}
+        run: python scripts/sync_notion.py archive-stale
 
       - name: Commit config.yaml if changed
         run: |
